@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+	<meta charset="utf-8">
+	<title>PDF → JPG</title>
+	<meta content="Matheus Avellar" name="author">
+	<!-- <meta name="description" content=""> -->
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<!-- <meta name="referrer" content="no-referrer"> -->
+	<link rel="preconnect" href="https://cdn.avl.la/" crossorigin>
+	<style>
+body {
+	font-family: Inter, sans-serif;
+	overflow-y: scroll;
+}
+header, main, footer {
+	max-width: 950px;
+	margin: auto;
+}
+#output-canvas-wrapper {
+	height: 1px;
+	overflow: hidden;
+}
+#output-canvas {
+	visibility: hidden;
+	pointer-events: none;
+}
+#drop-zone-wrapper {
+	position: relative;
+	padding: 4rem;
+}
+#drop-zone-backdrop {
+/*	z-index: -1;*/
+	font-weight: 600;
+}
+#drop-zone-backdrop p {
+	margin: 0;
+}
+#drop-zone {
+	border: 8px dashed #ededed;
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 1;
+}
+#drop-zone[data-dropping="true"] {
+	border-color: green;
+	color: green;
+}
+#file-input {
+	visibility: hidden;
+	z-index: -1;
+}
+#status-output > div {
+	border: 1px solid;
+	border-radius: 4px;
+	margin: .5rem;
+	padding: .5rem;
+	font-size: 85%;
+}
+#status-output > .status.warn {
+	color: #8d3000;
+	border-color: #8d3000;
+	background-color: #fffff5;
+}
+#status-output > .status.info {
+	color: #00106b;
+	border-color: #00106b;
+	background-color: #f6fdff;
+}
+#pdf-previews {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	margin-top: 2rem;
+}
+#pdf-previews > div {
+	display: grid;
+	grid-template-columns: 145px 1fr;
+	gap: .5rem;
+}
+#pdf-previews .preview-wrapper {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+	padding: .5rem;
+	border: 2px solid #ddd;
+	border-radius: 4px;
+	background-color: #ededed;
+	overflow-x: clip;
+}
+/*#pdf-previews .preview-wrapper .page::after {
+	content: "p." attr(data-pnum);
+	font-size: 0.75rem;
+	background-color: #ffffff;
+	padding: 0.25rem 0.5rem;
+	width: 100%;
+	display: block;
+	box-sizing: border-box;
+	text-align: center;
+}*/
+#pdf-previews .preview-wrapper .page {
+	box-shadow: 5px 2px 5px -3px rgb(0 0 0 / 25%);
+}
+#pdf-previews .preview-wrapper .page > canvas {
+	display: block;
+}
+#pdf-previews .preview-wrapper .page:nth-of-type(2) {
+	transform: translateX(-95%);
+	transition: transform .2s ease;
+}
+#pdf-previews .preview-wrapper:hover .page:nth-of-type(2) {
+	transform: translateX(-85%);
+}
+#pdf-previews .preview-wrapper .page:nth-of-type(3) {
+	transform: translateX(-190%);
+	transition: transform .2s ease;
+}
+#pdf-previews .preview-wrapper:hover .page:nth-of-type(3) {
+	transform: translateX(-175%);
+}
+#pdf-previews .pdf-description-area {
+	padding: .5rem;
+}
+#pdf-previews .pdf-description-area .pdf-title {
+	display: block;
+	font-weight: 600;
+	max-width: 100%;
+	text-overflow: ellipsis;
+	overflow: hidden;
+	white-space: nowrap;
+}
+#pdf-previews .pdf-description-area .pdf-pages {
+	color: #888;
+}
+#pdf-previews .pdf-description-area button {
+	display: block;
+	margin: 1rem 0;
+	padding: 0.5rem 0.75rem;
+}
+footer {
+	text-align: right;
+	color: #aaa;
+	font-size: 85%;
+}
+footer .email {
+	fill: none;
+	stroke: #aaa;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	height: 1.5em;
+	padding: .15em 0;
+	vertical-align: middle;
+	box-sizing: border-box;
+}
+	</style>
+</head>
+<body>
+	<header>
+		<h1>PDF → JPG</h1>
+		<p>
+			Este é um protótipo de website que salva as páginas de um arquivo PDF como
+			imagens JPG.
+		</p>
+		<p>
+			Nenhum arquivo é enviado a servidor nenhum; toda a conversão ocorre no seu
+			próprio navegador.
+		</p>
+	</header>
+	<main>
+		<section id="drop-zone-wrapper">
+			<div id="drop-zone-backdrop">
+				<p>Arraste um arquivo PDF para cá!</p>
+				<p>Ou, se preferir, clique aqui para escolher um de seu computador.</p>
+			</div>
+			<label id="drop-zone" ondrop="dropHandler(event);" ondragover="dragOverHandler(event);" ondragleave="dragLeaveHandler(event)">
+				<input id="file-input" type="file" accept="application/pdf, application/x-pdf" multiple>
+			</label>
+		</section>
+		<output id="status-output"></output>
+		<section id="pdf-previews"></section>
+		<div id="output-canvas-wrapper"><canvas id="output-canvas"></canvas></div>
+	</main>
+	<footer>
+		<p>
+			Feito com ♥&#xFE0E;<!--&#xFE0E;[Ref] stackoverflow.com/a/38452396/4824627-->
+			por Matheus Avellar<br>Rio de Janeiro, 2023
+		</p>
+		<p>
+			Sugestões, reclamações ou comentários?<br>
+			Mande um email para m<svg class="email" viewBox="0 0 24 24" aria-label="@">
+				<circle cx="12" cy="12" r="4"></circle>
+				<path d="M16 12v1.5a2.5 2.5 0 0 0 5 0v-1.5a9 9 0 1 0 -5.5 8.28"></path>
+			</svg>avl.la
+		</p>
+		<p>
+			PDF.js disponível no <a href="https://github.com/mozilla/pdf.js">GitHub</a>
+			sob a licença
+			<a href="https://github.com/mozilla/pdf.js/blob/87ea2ed4e2b63b2a610ee25dc0222551d7df0154/LICENSE">Apache-2.0</a>.
+			<br>
+			JSZip disponível no <a href="https://github.com/Stuk/jszip">GitHub</a>
+			sob a licença
+			<a href="https://github.com/Stuk/jszip/blob/2ceb998e29d4171b4f3f2ecab1a2195c696543c0/LICENSE.markdown">MIT</a>.
+		</p>
+	</footer>
+	<link rel="stylesheet" href="https://cdn.avl.la/font/inter.css">
+	<script src="build/pdf.js"></script>
+	<script src="jszip.min.js"></script>
+	<script>
+const pdfjsLib = window.pdfjsLib;
+pdfjsLib.GlobalWorkerOptions.workerSrc = "build/pdf.worker.js";
+
+const output_canvas = document.getElementById("output-canvas");
+const output_ctx = output_canvas.getContext("2d");
+const pdf_previews = document.getElementById("pdf-previews");
+const status_elem = document.getElementById("status-output");
+
+function statusOutput({ message, level="info" }) {
+	const div = document.createElement("div");
+	div.textContent = message;
+	div.classList.add("status");
+	div.classList.add(level);
+	status_elem.appendChild(div);
+}
+	</script>
+	<script>
+function dropHandler(ev) {
+	console.log("File(s) dropped");
+	ev.target.dataset.dropping = false;
+	// Prevent default behavior (Prevent file from being opened)
+	ev.preventDefault();
+	// Use DataTransferItemList interface to access the file(s)
+	const transfer = "items" in ev.dataTransfer ? ev.dataTransfer.items : ev.dataTransfer.files;
+	if(!transfer || transfer.length <= 0) {
+		console.log("[dropHandler] No transfer", transfer);
+		return;
+	}
+	console.log(`[dropHandler] Found ${transfer.length} items`);
+	const pdfsList = [];
+	for(const item of [...transfer]) {
+		// If dropped items aren't files, reject them
+		if("kind" in item && item.kind !== "file") {
+			console.log("[dropHandler] Rejected", item);
+			continue;
+		}
+		const file = item.getAsFile();
+		console.log(`[dropHandler] \tReceived '${file.name}'`);
+		pdfsList.push(file);
+	}
+
+	processFiles(pdfsList);
+}
+function dragOverHandler(ev) {
+	ev.preventDefault();
+	ev.target.dataset.dropping = true;
+}
+function dragLeaveHandler(ev) {
+	ev.preventDefault();
+	ev.target.dataset.dropping = false;
+}
+
+document.getElementById("file-input").addEventListener("change", function(ev) {
+	processFiles(ev.target.files);
+});
+
+function processFiles(files) {
+	console.log(`[processFiles] Processing files`, files);
+	for(const file of files) {
+		if(![ "application/pdf", "application/x-pdf" ].includes(file.type)) {
+			console.warn(`MIME type isn't PDF: ${file.type}; skipping`);
+			statusOutput({
+				message: `Arquivo '${file.name}' não parece ser um PDF! Ele se diz ser '${file.type}'.`,
+				level: "warn"
+			});
+			continue;
+		}
+		if(!file.name.endsWith(".pdf")) {
+			console.warn(`File name doesn't end in PDF: '${file.name}'!`);
+		}
+		// Step 1: Read the file using file reader
+		const fileReader = new FileReader();
+		fileReader.onload = function() {
+			console.log(`[processFiles] Loaded '${file.name}'`);
+			// Step 3: Turn array buffer into typed array
+			const typedarray = new Uint8Array(this.result);
+			// Step 4: Pdfjs should be able to read this
+			const loadingTask = pdfjsLib.getDocument(typedarray);
+			// Process loaded document
+			loadingTask.promise.then((pdf) => { processPdf(pdf, file) });
+		};
+		// Step 2: Read the file as ArrayBuffer
+		fileReader.readAsArrayBuffer(file);
+	}
+}
+
+async function processPdf(pdf, file) {
+	console.log(pdf);
+	console.log(`[processPdf] Found ${pdf.numPages} pages`);
+	// statusOutput({
+	// 	message: `Carregado ${pdf.numPages} páginas do arquivo '${file.name}'`
+	// });
+	const pdf_wrapper = document.createElement("div");
+
+	const pages_wrapper = document.createElement("div");
+	pages_wrapper.className = "preview-wrapper";
+
+	// Preview das primeiras N páginas
+	const N = Math.min(3, pdf.numPages);
+	for(let p = 1; p <= N; p++) {
+		pdf.getPage(p).then((page) => {
+			const canvas = document.createElement("canvas");
+			const ctx = canvas.getContext("2d");
+
+			//const viewport = page.getViewport({ scale: 0.25 });
+			const desiredWidth = 100; // 150px
+			const viewport = page.getViewport({ scale: 1 });
+			const scale = desiredWidth / viewport.width;
+			const scaledViewport = page.getViewport({ scale: scale });
+
+			canvas.height = scaledViewport.height;
+			canvas.width = scaledViewport.width;
+			// Render PDF page into canvas context
+			const renderTask = page.render({
+				canvasContext: ctx,
+				viewport: scaledViewport
+			});
+			const page_el = createPage(canvas, p);
+			page_el.style.zIndex = (N - p + 1);
+			pages_wrapper.appendChild(page_el);
+		});
+	}
+	pdf_wrapper.appendChild(pages_wrapper);
+
+	const description = document.createElement("div");
+	description.className = "pdf-description-area"
+
+	const pdf_title = document.createElement("span");
+	pdf_title.textContent = `${file.name}`;
+	pdf_title.className = "pdf-title";
+	description.appendChild(pdf_title);
+	const pdf_pages = document.createElement("span");
+	pdf_pages.textContent = `${pdf.numPages} página${pdf.numPages >= 2 ? "s" : ""}`;
+	if(pdf.numPages > 100) {
+		pdf_pages.textContent += ` (limitado às 100 primeiras páginas)`;
+	}
+	pdf_pages.className = "pdf-pages";
+	description.appendChild(pdf_pages);
+
+	const zip = new JSZip();
+	const download_btn = document.createElement("button");
+	download_btn.textContent = "Baixar páginas como JPG";
+	download_btn.addEventListener("click", function(ev) {
+		console.log("Requested download");
+		download_btn.disabled = true;
+		download_btn.textContent = "Convertendo...";
+		// page.view?
+		// Timeout pra permitir que a UI atualize
+		setTimeout(() => {
+			let done = 0;
+			// Adiciona todas as páginas ao zip
+			// Limite de 100
+			const N = Math.min(100, pdf.numPages);
+			for(let p = 1; p <= N; p++) {
+				setTimeout(function() {
+					// Para cada página
+					pdf.getPage(p).then((page) => {
+						// Cria um canvas novo
+						const canvas = document.createElement("canvas");
+						const ctx = canvas.getContext("2d");
+						// Calcula o tamanho
+						const view = page.getViewport({ scale: 2 });
+						canvas.height = view.height;
+						canvas.width = view.width;
+						// Renderiza a página
+						page.render({
+							canvasContext: ctx,
+							viewport: view
+						}).promise.then(e => {
+							addImageToZip(zip, canvas, file.name, p).then(() => {
+								// Finalmente pronto!
+								done++;
+							});
+						});
+					});
+				}, p*250);
+			}
+			function checkIfDone() {
+				if(done < N) {
+					download_btn.textContent = `Convertendo... ${done}/${N}`;
+					return setTimeout(checkIfDone, 1000);
+				}
+				download_btn.textContent = "Baixando!";
+				downloadZip(zip, file.name);
+			}
+			checkIfDone();
+		}, 100);
+	});
+	description.appendChild(download_btn);
+
+	pdf_wrapper.appendChild(description);
+	pdf_previews.appendChild(pdf_wrapper);
+}
+
+function createPage(canvas, pageNum) {
+	const wrapper = document.createElement("div");
+	wrapper.className = "page";
+	wrapper.dataset.pnum = pageNum;
+	wrapper.appendChild(canvas);
+	return wrapper;
+}
+	</script>
+	<script>
+function handleFilename(name) {
+	// Remove ".pdf" do final
+	name = name.slice(0, name.lastIndexOf("."));
+	// Remove acentos, símbolos, etc
+	return name.normalize("NFKD").replace(/[^A-Z0-9-_]/ig, "_");
+}
+function addImageToZip(zip, canvas, pdfname, pageNum) {
+	return new Promise((resolve, reject) => {
+		canvas.toBlob((blob) => {
+			const orig_name = handleFilename(pdfname);
+			const filename = `${orig_name}--p${pageNum}.jpg`;
+			const fileObj = new File([blob], filename, { type: "image/jpeg" });
+			// Add to zip
+			zip.file(filename, fileObj);
+			resolve();
+		}, "image/jpeg");
+	});
+}
+function downloadZip(zip, filename="imagens") {
+	// Export zip
+	zip.generateAsync({ type: "blob" }).then(function(blob) {
+		const anchor = document.createElement("a"); // Or maybe get it from the current document
+		anchor.href = URL.createObjectURL(blob);
+		anchor.download = `${handleFilename(filename)}.zip`;
+		document.body.appendChild(anchor); // Or append it wherever you want
+		anchor.click();
+		URL.revokeObjectURL(anchor.href);
+		anchor.remove();
+	});
+}
+	</script>
+</body>
+</html>
